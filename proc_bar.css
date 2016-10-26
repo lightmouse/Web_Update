@@ -1,0 +1,7 @@
+canvas{
+    position: absolute;
+    top: calc(70% - 50px);
+    top: -webkit-calc(50% - 100px);
+    left: calc(50% - 200px);
+    left: -webkit-calc(50% - 200px);
+}

@@ -1,0 +1,92 @@
+<!--
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+-->
+<!DOCTYPE html><!-- html 5 -->
+<html lang="zh-CN">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>用户程序</title>
+    <style type="text/css">
+        <!--
+        .STYLE3 {font-family: "微软雅黑"; font-size: large; }
+        -->
+    </style>
+   <!-- link rel="stylesheet" href="proc_bar.css" type="text/css"-->
+
+
+</head>
+<SCRIPT type="text/javascript" src="./jquery_1_12_4_min.js"></SCRIPT>
+<script type="text/javascript">
+    function clear(txt)
+    {
+        $.post(
+                "clear.asp",
+
+                {
+                    clear:txt
+                }
+        );
+
+    }
+
+    function clear_log()
+    {
+        clear("log");
+    }
+
+    function clear_record()
+    {
+        clear("record");
+    }
+
+    function test(txt)
+    {
+        $.post(
+                "test.asp",
+
+                {
+                    test:txt
+                }
+        );
+    }
+
+    function led_test()
+    {
+        test("led");
+    }
+
+</script>
+
+<body>
+
+<!-- 调用update.js脚本  -->
+<canvas id = "canvas" style="position: absolute; top: calc(70% - 50px); left: calc(50% - 200px)"> </canvas>
+<script language="javascript" src="./update.js" type="text/javascript" charset="UTF-8"></script>
+<script language="javascript" src="./jquery_1_12_4_min.js" type="text/javascript" charset="UTF-8"></script>
+
+<DIV align="center">
+    <INPUT id="clear_log" value="日志清除" type="button" onclick="clear_log()">
+    <br><br><br>
+    <INPUT id="clear_record" value="运行记录清除" type="button" onclick="clear_record()">
+    <br><br><br>
+    <INPUT id="led_test" value="指示灯测试" type="button" onclick="led_test()">
+    <br><br><br>
+    <input id="update" value="程序升级" type="button" onclick="display_select_file(document.getElementById('d1'))"/>
+</DIV>
+
+<!-- 选择本地文件 -->
+<div align="center" style="height: 0px; overflow: hidden; width: 0px;">
+    <input type="file" accept="application/octet-stream" id="choose_file" onchange="start_update()"/>
+</div>
+
+<br/><br/>
+<div align="center" id="d1" style="display: none">
+    <input type="text" id="t1" align="middle"/>
+    <input type="submit" onclick="document.getElementById('choose_file').click()" value="选择升级文件" align="middle"/>
+</div>
+
+</body>
+
+
+</html>
