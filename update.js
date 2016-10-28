@@ -2,10 +2,13 @@
  * Created by wuguanghao on 2016-10-10.
  */
 
+var debug = 1;   // 开启debug模式
+
 /****************** 全局变量区 *************************/
 var update_flag    = new Array(3);
 var update_cpu_id  = new Array(3);
 var update_version = new Array(4);
+
 
 const STM32F7_CPU_ID = [0x12, 0x34, 0x56]; //暂定
 const STM32F7_APP_FLAG = [ 'a', 'p', 'p']; //APP_bin
@@ -31,25 +34,7 @@ function start_update()
     var file_name  = document.getElementById('choose_file').files[0].name;
 
     check_update_file_name(file_name);
-/*
-        if (check_update_file_name(file_name) != 0){
-            alert("文件格式错误,请重新选择升级文件");
-            return;
-        }
-        check_update_file_version(file);
 
-        if (check_update_file_version(file) != 0)
-            return;
-
-        if (send_update_data(file) != 0)
-            if (confirm("升级失败, 是否重新升级"))
-                continue;
-            else {
-                display_select_file('d1');
-                return;
-            }
-    }
-*/
 }
 /*************************************************************************/
 
@@ -66,15 +51,6 @@ function check_update_file_name(name) {
 }
 /*************************************************************************/
 
-/******************      检查升级文件版本    *******************************/
-/*
-function check_update_file_version()
-{
-    var file = document.getElementById('choose_file').files[0];
-    compare_file_version(file);            <!-- 检测升级文件的版本号 -->
-}
-*/
-/**************************************************************************/
 
 /********************    检测当前浏览器是否支持HTML5   ************************/
 function isSupportFileApi() {
@@ -102,20 +78,24 @@ function compare_file_name(name){
 function get_current_version() {
     var current_version = new Array(4);
     var count = 0;
-    $.post(
-        "version.asp",
-        {
-            version: "current_version"
-        },
-        function (data){
-            for (var i = 0; i < data.length; i++){
-                if (data[i] != '"' && data[i] != '.')
-                    current_version[count++] = data[i] - "0" + 0x30; // 将字符型转化为十六进制值
+
+    if (debug == 0) {
+        $.post(
+            "version.asp",
+            {
+                version: "current_version"
+            },
+            function (data) {
+                for (var i = 0; i < data.length; i++) {
+                    if (data[i] != '"' && data[i] != '.')
+                        current_version[count++] = data[i] - "0" + 0x30; // 将字符型转化为十六进制值
+                }
+                read_update_file(current_version);
             }
-            read_update_file(current_version);
-        }
-    )
-    //read_update_file(current_version);
+        )
+    }
+    else
+        read_update_file(current_version);
 }
 /***************************************************************************/
 
@@ -180,17 +160,19 @@ function compare_version(file_contant, cur_version){
         Error_return();
         return;
     }
+    var count = 0;
     for (var i = 0; i < 4; i++){
         if (update_version[i] > current_version[i]){
             if (confirm("是否开始升级?"))
-                send_update_data(file_contant, len);
+                send_update_len(file_contant, len);
             else
                 Error_return();
         }
         else if (update_version[i] < current_version[i]){
-            if (confirm("升级版本小于当前版本, 是否升级?")) {
-                if (confirm("是否开始升级?"))
-                    send_update_data(file_contant, len);
+            if (confirm("升级版本低于当前版本, 是否降级?")) {
+                if (confirm("是否开始降级?")) {
+                    send_update_len(file_contant, len);
+                }
                 else
                     Error_return();
             }
@@ -198,14 +180,17 @@ function compare_version(file_contant, cur_version){
                 Error_return();
         }
         else {
-            if (confirm("当前版本和升级版本相同, 是否升级?")){
-                if (confirm("是否开始升级?"))
-                    send_update_data(file_contant, len);
+            ++count;
+            if (count == 4){
+                if (confirm("升级版本和当前版本相同, 是否继续升级?")){
+                    if (confirm("是否开始升级"))
+                        send_update_len(file_contant, len);
+                    else
+                        Error_return();
+                }
                 else
                     Error_return();
             }
-            else
-                Error_return();
         }
     }
 }
@@ -226,37 +211,11 @@ function read_update_file(cur_version) {
 
     reader.onload = function(data) {
         var chars = new Uint8Array(this.result);
-        compare_version(chars, cur_version);
+        if (debug == 0)
+              compare_version(chars, cur_version);
+        else
+            send_data(chars, chars.length);
     };
-}
-/***********************************************************************/
-
-/**************************  发送更新文件 ********************************/
-function send_update_data(file_contant, len) {
-    var package_count = 1;                  <!-- 帧编号 -->
-    var each_package_num = 50;              <!-- 每帧包含的文件数据 -->
-    var send_data_buf = new Uint8Array(53); <!-- 每帧长度 : 帧编号(2字节) + 帧数据(50字节) + CRC8校验码(1字节)-->
-    var count = 0;
-
-    send_update_len(file_contant, len);
-/*
-    while (len){
-        if (len > each_package_num){
-            memcpy(send_data_buf, file_contant[count], each_package_num);
-            len -= each_package_num;
-            count += each_package_num;
-        } else {
-            memcpy(send_data_buf, file_contant[count], len);
-            len = 0;
-        }
-    }
-
-    while (1){
-        //animloop();
-        if (send_data(send_data_buf.toString(), 51) == -1)
-            return -1;
-    }
-*/
 }
 /***********************************************************************/
 
@@ -265,7 +224,8 @@ function send_update_len(file, len) {
     $.post(
         "update.asp",
         {
-            file_len:"a=len&b=0x00"
+            file_len:len,
+            stop:0x00             //结束标志
         },
 
         function (data) {
@@ -280,22 +240,56 @@ function send_update_len(file, len) {
 }
 
 /**************************  发送升级数据 ********************************/
-function send_data(buf, data_len) {
+var frame_count = 0;
+var data_len    = 50;
+var each_frame_num = 54;
+var read_len    = 0;
+var frame_buf = new Uint8Array(each_frame_num);      <!-- 帧编号占据2字节 + 50字节数据 + 1个字节CRC + 1个字节无效字符-->
+var deg = 0;
 
-    var ret = -1;
+function send_data(file_buf, file_len) {
 
-    $.post(
-        "update.asp",
-        {
-            array: buf,
-            len: data_len
-        },
+    if (file_len <= 0)
+        return;
 
-        function (data) {
-            if (data == "ok")
-                ret = 0;
-        }
-    )
+    deg+=1;
+    circleProgress(deg, 50);
+
+    frame_count  = frame_count + 1;
+    frame_buf[0] = frame_count  / 256;
+    frame_buf[1] = frame_count  % 256;
+
+    for (var i = 0; i < data_len; i++)
+        frame_buf[2 + i] = file_buf[i + read_len];
+
+    frame_buf[52] = check_sum(frame_buf, 52);
+    frame_buf[53] = 0;
+
+    read_len += data_len;
+
+    if (debug == 0) {
+        $.post(
+            "update.asp",
+            {
+                string: frame_buf.toString()
+            },
+
+            function (data) {
+                if (data == "ReplyOK")
+                    send_data(file_buf, file_len - data_len);
+                else {
+                    if (confirm("数据发送错误, 是否重新升级?")) {
+                        frame_count = 1;
+                        start_update();
+                    }
+                    else
+                        Error_return();
+                }
+            }
+        )
+    }
+    else send_data(file_buf, file_len - data_len);
+
 }
 /************************* 校验和 *************************************/
 function check_sum(buf, len) {
@@ -303,10 +297,13 @@ function check_sum(buf, len) {
     for (var i = 0; i < len; i++){
         sum += buf[i];
     }
+    //return sum % 256;
+    return sum;
 }
 /**********************************************************************/
 
 /************************ 数据拷贝 ************************************/
+
 function memcpy(src, dst, len) {
 
     for (var i = 0; i < len; i++)
@@ -320,125 +317,114 @@ function  Error_return() {
 
 
 /**        第三方进度条显示    **/
-particle_no = 25;
 
-window.requestAnimFrame = (function(){
-    return  window.requestAnimationFrame   ||
-        window.webkitRequestAnimationFrame ||
-        window.mozRequestAnimationFrame    ||
-        window.oRequestAnimationFrame      ||
-        window.msRequestAnimationFrame     ||
-        function( callback ){
-            window.setTimeout(callback, 1000 / 60);
-        };
-})();
-
-var canvas = document.getElementsByTagName("canvas")[0];
-var ctx = canvas.getContext("2d");
-
-var counter = 0;
-var particles = [];
-var w = 400, h = 200;
-canvas.width = w;
-canvas.height = h;
-
-function reset(){
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0,0,w,h);
-
-    ctx.fillStyle = "#171814";
-    ctx.fillRect(25,80,350,25);
-}
-
-function progressbar(){
-    this.widths = 0;
-    this.hue = 0;
-
-    this.draw = function(){
-        ctx.fillStyle = 'hsla('+this.hue+', 100%, 40%, 1)';
-        ctx.fillRect(25,80,this.widths,25);
-        var grad = ctx.createLinearGradient(0,0,0,130);
-        grad.addColorStop(0,"transparent");
-        grad.addColorStop(1,"rgba(0,0,0,0.5)");
-        ctx.fillStyle = grad;
-        ctx.fillRect(25,80,this.widths,25);
-    }
-}
-
-function particle(){
-    this.x = 23 + bar.widths;
-    this.y = 82;
-
-    this.vx = 0.8 + Math.random()*1;
-    this.v = Math.random()*5;
-    this.g = 1 + Math.random()*3;
-    this.down = false;
-
-    this.draw = function(){
-        ctx.fillStyle = 'hsla('+(bar.hue+0.3)+', 10%, 10%, 1)';
-        var size = Math.random()*2;
-        ctx.fillRect(this.x, this.y, size, size);
-    }
-}
-
-bar = new progressbar();
-
-function draw(){
-    reset();
-//    counter++
-
-    bar.hue += 0.8;
-
-//    bar.widths += 2;
-    if(bar.widths > 350){
-        if(counter > 2){
-            reset();
-            bar.hue = 0;
-            bar.widths = 0;
-            counter = 0;
-            particles = [];
+    function circleProgress(value,average){
+        var canvas = document.getElementById("canvas");
+        var context = canvas.getContext('2d');
+        var _this = $(canvas),
+            value= Number(value),// 当前百分比,数值
+            average = Number(average),// 平均百分比
+            color = "",// 进度条、文字样式
+            maxpercent = 100,//最大百分比，可设置
+            c_width = _this.width(),// canvas，宽度
+            c_height =_this.height();// canvas,高度
+        // 判断设置当前显示颜色
+        if( value== maxpercent ){
+            color="#29c9ad";
+        }else if( value> average ){
+            color="#27b5ff";
+        }else{
+            color="#ff6100";
         }
-        else{
-            bar.hue = 126;
-            bar.widths = 351;
-            bar.draw();
-        }
-    }
-    else{
-        bar.draw();
-        for(var i=0;i<particle_no;i+=10){
-            particles.push(new particle());
-        }
-    }
-    update();
-}
+        // 清空画布
+        context.clearRect(0, 0, c_width, c_height);
+        // 画初始圆
+        context.beginPath();
+        // 将起始点移到canvas中心
+        context.moveTo(c_width/2, c_height/2);
+        // 绘制一个中心点为（c_width/2, c_height/2），半径为c_height/2，起始点0，终止点为Math.PI * 2的 整圆
+        context.arc(c_width/2, c_height/2, c_height/2, 0, Math.PI * 2, false);
+        context.closePath();
+        context.fillStyle = '#ddd'; //填充颜色
+        context.fill();
+        // 绘制内圆
+        context.beginPath();
+        context.strokeStyle = color;
+        context.lineCap = 'square';
+        context.closePath();
+        context.fill();
+        context.lineWidth = 10.0;//绘制内圆的线宽度
 
-function update(){
-    for(var i=0;i<particles.length;i++){
-        var p = particles[i];
-        p.x -= p.vx;
-        if(p.down == true){
-            p.g += 0.1;
-            p.y += p.g;
+        function draw(cur){
+            // 画内部空白
+            context.beginPath();
+            context.moveTo(24, 24);
+            context.arc(c_width/2, c_height/2, c_height/2-10, 0, Math.PI * 2, true);
+            context.closePath();
+            context.fillStyle = 'rgba(255,255,255,1)';  // 填充内部颜色
+            context.fill();
+            // 画内圆
+            context.beginPath();
+            // 绘制一个中心点为（c_width/2, c_height/2），半径为c_height/2-5不与外圆重叠，
+            // 起始点-(Math.PI/2)，终止点为((Math.PI*2)*cur)-Math.PI/2的 整圆cur为每一次绘制的距离
+            context.arc(c_width/2, c_height/2, c_height/2-5, -(Math.PI / 2), ((Math.PI * 2) * cur ) - Math.PI / 2, false);
+            context.stroke();
+            //在中间写字
+            context.font = "bold 20pt Arial";  // 字体大小，样式
+            context.fillStyle = color;  // 颜色
+            context.textAlign = 'center';  // 位置
+            context.textBaseline = 'middle';
+            context.moveTo(c_width/2, c_height/2);  // 文字填充位置
+            context.fillText(value+"%", c_width/2, c_height/2);
+   //         context.fillText("正确率", c_width/2, c_height/2+20);
         }
-        else{
-            if(p.g<0){
-                p.down = true;
-                p.g += 0.1;
-                p.y += p.g;
-            }
-            else{
-                p.y -= p.g;
-                p.g -= 0.1;
-            }
+        /*
+        // 调用定时器实现动态效果
+        var timer=null,n=0;
+        function loadCanvas(nowT){
+            timer = setInterval(function(){
+                if(n>nowT){
+                    clearInterval(timer);
+                }else{
+                    draw(n);
+                    n += 0.01;
+                }
+            },15);
         }
-        p.draw();
+        loadCanvas(value/100);
+        timer=null;
+        */
     }
-}
 
-function animloop() {
-    draw();
-    requestAnimFrame(animloop);
-}
+/*
+var canvas2d = document.getElementById("canvas").getContext("2d");
 
-//animloop();
+var test = function(deg){
+    var r = deg*Math.PI/180;   //canvas绘制圆形进度
+    canvas2d.clearRect(0,0,200,200);   //先清理
+    canvas2d.beginPath();  //路径开始
+    //canvas2d.fillStyle = "#"; //填充颜色
+    canvas2d.strokeStyle = "#0066ff"; //canvas边框颜色
+    canvas2d.lineWidth = 6; //线宽
+    canvas2d.arc(100,100,50,0-90*Math.PI/180,r-90*Math.PI/180,false); //canvas绘制弧形
+    //canvas2d.fill();
+    canvas2d.stroke();
+    //canvas2d.closePath();
+};
+*/
+//添加延时功能
+
+//使用定时器让html5 canvas绘制圆形进度动起来
+
+/*
+var t = setInterval(function(){
+    deg+=10;
+    test(deg);
+    if(deg>360){
+        clearInterval(t);
+    }
+    console.log(deg);
+},20);
+*/
+
+//test();
