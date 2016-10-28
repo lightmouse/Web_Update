@@ -251,13 +251,17 @@ var per = 0;
 
 function send_data(file_buf, file_len) {
 
-    if (file_len <= 0)
+    if (file_len == 0) {
         recv_data();
+        return;
+    }
+
+    if (file_len < data_len)
+        data_len = file_len;
+
+    read_len += data_len;
 
     per = read_len / length * 100;  //获得发送文件的百分比
-
-    if (per > 100)
-        per = 100;
 
     if (mutex == 0){
         circleProgress(100, 50);
@@ -274,10 +278,8 @@ function send_data(file_buf, file_len) {
     for (var i = 0; i < data_len; i++)
         frame_buf[2 + i] = file_buf[i + read_len];
 
-    frame_buf[52] = check_sum(frame_buf, 52);
-    frame_buf[53] = 0;
-
-    read_len += data_len;
+    frame_buf[2 + data_len] = check_sum(frame_buf, 2 + data_len);
+    frame_buf[3 + data_len] = 0;
 
     if (debug == 0) {
         $.post(
