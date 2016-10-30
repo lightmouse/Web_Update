@@ -33,8 +33,10 @@ function start_update()
 {
     var file_name  = document.getElementById('choose_file').files[0].name;
 
-    check_update_file_name(file_name);
-
+    if (debug == 0)
+        check_update_file_name(file_name);
+    else
+        recv_data();
 }
 /*************************************************************************/
 
@@ -245,15 +247,27 @@ var data_len    = 50;
 var each_frame_num = 54;
 var read_len    = 0;
 var frame_buf = new Uint8Array(each_frame_num);      <!-- 帧编号占据2字节 + 50字节数据 + 1个字节CRC + 1个字节无效字符-->
-var deg = 0;
+var mutex = 0;
+var length = 0;
+var per = 0;
 
 function send_data(file_buf, file_len) {
 
     if (file_len <= 0)
-        return;
+        recv_data();
 
-    deg+=1;
-    circleProgress(deg, 50);
+    per = (read_len + data_len) / length * 100;  //获得发送文件的百分比
+
+    if (per > 100)
+        prr = 100;
+
+    if (mutex == 0){
+        circleProgress(100, 50);
+        length = file_len;
+        mutex = 1;
+    } else {
+        draw(round(per, 0), round(per/100, 2));
+    }
 
     frame_count  = frame_count + 1;
     frame_buf[0] = frame_count  / 256;
@@ -262,11 +276,15 @@ function send_data(file_buf, file_len) {
     for (var i = 0; i < data_len; i++)
         frame_buf[2 + i] = file_buf[i + read_len];
 
-    frame_buf[52] = check_sum(frame_buf, 52);
-    frame_buf[53] = 0;
+    frame_buf[2 + data_len] = check_sum(frame_buf, 2 + data_len);
+    frame_buf[3 + data_len] = 0;
 
     read_len += data_len;
 
+    if ( data_len < 50)
+        str = frame_buf.toString();
+    else
+        str = frame_buf.toString();
     if (debug == 0) {
         $.post(
             "update.asp",
@@ -275,11 +293,13 @@ function send_data(file_buf, file_len) {
             },
 
             function (data) {
-                if (data == "ReplyOK")
+                if (data == "ReplyOK") {
                     send_data(file_buf, file_len - data_len);
+                }
                 else {
                     if (confirm("数据发送错误, 是否重新升级?")) {
                         frame_count = 1;
+                        data_len = 50;
                         start_update();
                     }
                     else
@@ -291,16 +311,45 @@ function send_data(file_buf, file_len) {
     else send_data(file_buf, file_len - data_len);
 
 }
+
+/************************* 接收升级文件 ********************************/
+var recv_buf = new Uint8Array();
+var frame_count = 0;
+
+function recv_data() {
+    //TODO: 新建一个数组, 存放服务器发送的数据
+    frame_count++;
+    $.post(
+        "update.asp",
+        {
+            return_string: frame_count,
+            stop : 0x00  //停止标志
+        },
+        function (data) {  //取返回数据的前2个, 和count比较
+            if (data == frame_count)
+                recv_data();
+            else {
+                alert("数据接收失败");
+                Error_return();
+            }
+        }
+    )
+
+    //TODO: 使用post 发送命令： 要求服务端发送写入flash的升级文件
+    //TODO: 比较 收到的数据和原始的升级文件, 如果没有错误, 发送升级成功命令
+}
+
 /************************* 校验和 *************************************/
 function check_sum(buf, len) {
     var sum = 0;
     for (var i = 0; i < len; i++){
         sum += buf[i];
     }
-    //return sum % 256;
     return sum;
 }
 /**********************************************************************/
+
+
 
 /************************ 数据拷贝 ************************************/
 
@@ -318,113 +367,73 @@ function  Error_return() {
 
 /**        第三方进度条显示    **/
 
-    function circleProgress(value,average){
-        var canvas = document.getElementById("canvas");
-        var context = canvas.getContext('2d');
-        var _this = $(canvas),
-            value= Number(value),// 当前百分比,数值
-            average = Number(average),// 平均百分比
-            color = "",// 进度条、文字样式
-            maxpercent = 100,//最大百分比，可设置
-            c_width = _this.width(),// canvas，宽度
-            c_height =_this.height();// canvas,高度
-        // 判断设置当前显示颜色
-        if( value== maxpercent ){
-            color="#29c9ad";
-        }else if( value> average ){
-            color="#27b5ff";
-        }else{
-            color="#ff6100";
-        }
-        // 清空画布
-        context.clearRect(0, 0, c_width, c_height);
-        // 画初始圆
-        context.beginPath();
-        // 将起始点移到canvas中心
-        context.moveTo(c_width/2, c_height/2);
-        // 绘制一个中心点为（c_width/2, c_height/2），半径为c_height/2，起始点0，终止点为Math.PI * 2的 整圆
-        context.arc(c_width/2, c_height/2, c_height/2, 0, Math.PI * 2, false);
-        context.closePath();
-        context.fillStyle = '#ddd'; //填充颜色
-        context.fill();
-        // 绘制内圆
-        context.beginPath();
-        context.strokeStyle = color;
-        context.lineCap = 'square';
-        context.closePath();
-        context.fill();
-        context.lineWidth = 10.0;//绘制内圆的线宽度
+var canvas = document.getElementById("canvas");
+var context = canvas.getContext('2d');
 
-        function draw(cur){
-            // 画内部空白
-            context.beginPath();
-            context.moveTo(24, 24);
-            context.arc(c_width/2, c_height/2, c_height/2-10, 0, Math.PI * 2, true);
-            context.closePath();
-            context.fillStyle = 'rgba(255,255,255,1)';  // 填充内部颜色
-            context.fill();
-            // 画内圆
-            context.beginPath();
-            // 绘制一个中心点为（c_width/2, c_height/2），半径为c_height/2-5不与外圆重叠，
-            // 起始点-(Math.PI/2)，终止点为((Math.PI*2)*cur)-Math.PI/2的 整圆cur为每一次绘制的距离
-            context.arc(c_width/2, c_height/2, c_height/2-5, -(Math.PI / 2), ((Math.PI * 2) * cur ) - Math.PI / 2, false);
-            context.stroke();
-            //在中间写字
-            context.font = "bold 20pt Arial";  // 字体大小，样式
-            context.fillStyle = color;  // 颜色
-            context.textAlign = 'center';  // 位置
-            context.textBaseline = 'middle';
-            context.moveTo(c_width/2, c_height/2);  // 文字填充位置
-            context.fillText(value+"%", c_width/2, c_height/2);
+
+function circleProgress(value, average) {
+    var _this = $(canvas),
+        value = Number(value),     // 当前百分比,数值
+        average = Number(average),// 平均百分比
+        color = "",               // 进度条、文字样式
+        maxpercent = 100,         //最大百分比，可设置
+        c_width = _this.width(),  // canvas，宽度
+        c_height = _this.height(); //高度
+
+    // 清空画布
+    context.clearRect(0, 0, c_width, c_height);
+    // 画初始圆
+    context.beginPath();
+    // 将起始点移到canvas中心
+    context.moveTo(c_width / 2, c_height / 2);
+    // 绘制一个中心点为（c_width/2, c_height/2），半径为c_height/2，起始点0，终止点为Math.PI * 2的 整圆
+    context.arc(c_width / 2, c_height / 2, c_height / 2, 0, Math.PI * 2, false);
+    context.closePath();
+    context.fillStyle = '#ddd'; //填充颜色
+    context.fill();
+    // 绘制内圆
+    context.beginPath();
+    context.strokeStyle = "#29c9ad";
+    context.lineCap = 'square';
+    context.closePath();
+    context.fill();
+    context.lineWidth = 10.0;//绘制内圆的线宽度
+}
+
+function draw(value, cur){
+    // 画内部空白
+    var c_width = $(canvas).width();
+    var c_height = $(canvas).height();
+
+    //TODO 添加 不同的百分比 文字显示不同的颜色
+    context.beginPath();
+    context.moveTo(24, 24);
+    context.arc(c_width/2, c_height/2, c_height/2-10, 0, Math.PI * 2, true);
+    context.closePath();
+    context.fillStyle = 'rgba(255,255,255,1)';  // 填充内部颜色
+    context.fill();
+    // 画内圆
+    context.beginPath();
+    // 绘制一个中心点为（c_width/2, c_height/2），半径为c_height/2-5不与外圆重叠，
+    // 起始点-(Math.PI/2)，终止点为((Math.PI*2)*cur)-Math.PI/2的 整圆cur为每一次绘制的距离
+    context.arc(c_width/2, c_height/2, c_height/2-5, -(Math.PI / 2), ((Math.PI * 2) * cur ) - Math.PI / 2, false);
+    context.stroke();
+    //在中间写字
+    context.font = "bold 18pt Arial";  // 字体大小，样式
+    context.fillStyle = "#0033bb";  // 颜色
+    context.textAlign = 'center';  // 位置
+    context.textBaseline = 'middle';
+    context.moveTo(c_width/2, c_height/2);  // 文字填充位置
+    context.fillText(value+"%", c_width/2, c_height/2);
    //         context.fillText("正确率", c_width/2, c_height/2+20);
-        }
-        /*
-        // 调用定时器实现动态效果
-        var timer=null,n=0;
-        function loadCanvas(nowT){
-            timer = setInterval(function(){
-                if(n>nowT){
-                    clearInterval(timer);
-                }else{
-                    draw(n);
-                    n += 0.01;
-                }
-            },15);
-        }
-        loadCanvas(value/100);
-        timer=null;
-        */
-    }
+}
 
-/*
-var canvas2d = document.getElementById("canvas").getContext("2d");
+/***** 截取float类型的小数点位数 ***************/
 
-var test = function(deg){
-    var r = deg*Math.PI/180;   //canvas绘制圆形进度
-    canvas2d.clearRect(0,0,200,200);   //先清理
-    canvas2d.beginPath();  //路径开始
-    //canvas2d.fillStyle = "#"; //填充颜色
-    canvas2d.strokeStyle = "#0066ff"; //canvas边框颜色
-    canvas2d.lineWidth = 6; //线宽
-    canvas2d.arc(100,100,50,0-90*Math.PI/180,r-90*Math.PI/180,false); //canvas绘制弧形
-    //canvas2d.fill();
-    canvas2d.stroke();
-    //canvas2d.closePath();
-};
-*/
-//添加延时功能
-
-//使用定时器让html5 canvas绘制圆形进度动起来
-
-/*
-var t = setInterval(function(){
-    deg+=10;
-    test(deg);
-    if(deg>360){
-        clearInterval(t);
-    }
-    console.log(deg);
-},20);
-*/
-
-//test();
+function round(v,e){
+    var t=1;
+    for(;e>0;t*=10,e--);
+    for(;e<0;t/=10,e++);
+    return Math.round(v*t)/t;
+}
+/*********************************************/
